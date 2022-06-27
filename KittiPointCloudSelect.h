@@ -1,0 +1,14 @@
+//
+// Created by tony on 22-4-19.
+//
+
+#ifndef POINTCLOUD_PCA_TEST_KITTIPOINTCLOUDSELECT_H
+#define POINTCLOUD_PCA_TEST_KITTIPOINTCLOUDSELECT_H
+
+
+class KittiPointCloudSelect {
+
+};
+
+
+#endif //POINTCLOUD_PCA_TEST_KITTIPOINTCLOUDSELECT_H
