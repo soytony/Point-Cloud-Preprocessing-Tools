@@ -26,6 +26,10 @@
 #include <opencv4/opencv2/opencv.hpp>
 #include <opencv4/opencv2/core.hpp>
 
+#include <Utility.h>
+#include <fmt/core.h>
+#include <fmt/format.h>
+
 namespace pcl {
     struct PointXYZIRCT {
         PCL_ADD_POINT4D;
@@ -51,7 +55,8 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (
         (int16_t, label, label)
 )
 
-const float KEYFRAME_DIST_INTERVAL = 10.0f;
+const float KEYFRAME_DIST_INTERVAL = 2.0f;
+// const float KEYFRAME_DIST_INTERVAL = 10.0f;
 
 //select the dataset source here
 std::string dataset_dir_ = "/media/tony/mas_linux/Datasets/MulRan/KAIST03/";
@@ -63,7 +68,8 @@ std::string gt_pose_filename_ = dataset_dir_ + "global_pose.csv";
 
 std::string output_root_dir_ = dataset_dir_ + "selected_keyframes/";
 std::string output_cloud_dir_ = output_root_dir_ + "keyframe_point_cloud/";
-std::string output_keyframe_pose_filename_ = output_root_dir_ + "keyframe_pose.csv";
+std::string output_keyframe_pose_data_filename_ = output_root_dir_ + "keyframe_pose.csv";
+std::string output_keyframe_pose_format_filename_ = output_root_dir_ + "keyframe_pose_format.csv";
 
 struct Pose6f
 {
@@ -88,10 +94,14 @@ struct Pose6f
 
         new_pose.rotation_quat = rotation_quat.slerp(ratio, pose_2.rotation_quat);
         new_pose.rotation_matrix = new_pose.rotation_quat.toRotationMatrix();
-        Eigen::Vector3d euler_angles = new_pose.rotation_matrix.eulerAngles(2,1,0);
-        new_pose.yaw = euler_angles(0);
+
+        // do NOT use the built-in conversion for euler angles in Eigen
+        // Eigen::Vector3d euler_angles = new_pose.rotation_matrix.eulerAngles(2,1,0);
+        Eigen::Vector3d euler_angles = rotationMatrixToEulerAngles(new_pose.rotation_matrix);
+
+        new_pose.yaw = euler_angles(2);
         new_pose.pitch = euler_angles(1);
-        new_pose.roll = euler_angles(2);
+        new_pose.roll = euler_angles(0);
 
         return new_pose;
     };
@@ -157,20 +167,22 @@ void readFullGtPoses()
         Eigen::Matrix<double,4,4> T = Eigen::Matrix<double,4,4>::Zero();
         T(3,3) = 1.0;
 
-        std::vector<std::string> row;
+        std::vector<std::string> entry_tokens;
 
         std::stringstream  ss(tmp_pose_str);
         std::string str;
         while (getline(ss, str, ',')) {
-            row.push_back(str);
+            entry_tokens.push_back(str);
         }
-        if(row.size()!=13)
+        if(entry_tokens.size() != 13) {
+            std::cerr << "size of entry_token is NOT 13. " << std::endl;
             break;
+        }
         int64_t stamp_int;
-        std::istringstream ( row[0] ) >> stamp_int;
-        for(int i=0;i<3;i++){
-            for(int j=0;j<4;j++){
-                double d = std::stod(row[1+(4*i)+j]);
+        std::istringstream ( entry_tokens[0] ) >> stamp_int;
+        for(int i=0; i<3; i++){
+            for(int j=0; j<4; j++){
+                double d = std::stod(entry_tokens[1+(4*i)+j]);
                 T(i,j) = d;
             }
         }
@@ -178,14 +190,16 @@ void readFullGtPoses()
         //Eigen::Affine3d this_pose(T);
         Eigen::Matrix3d rotation_matrix = T.block<3,3>(0,0);
         Eigen::Quaterniond rotation_quat(rotation_matrix);
-        Eigen::Vector3d euler_angles = rotation_matrix.eulerAngles(2,1,0); // ZYX order: yaw pitch roll
+        // do NOT use the built-in conversion to euler angles in Eigen
+        // Eigen::Vector3d euler_angles = rotation_matrix.eulerAngles(2,1,0); // ZYX order: yaw pitch roll
+        Eigen::Vector3d euler_angles = rotationMatrixToEulerAngles(rotation_matrix);
         Pose6f this_pose6f{
                 .x = float(T(0,3)),
                 .y = float(T(1,3)),
                 .z = float(T(2,3)),
-                .roll = float(euler_angles(2)),
+                .roll = float(euler_angles(0)),
                 .pitch = float(euler_angles(1)),
-                .yaw = float(euler_angles(0)),
+                .yaw = float(euler_angles(2)),
                 .rotation_matrix = rotation_matrix,
                 .rotation_quat = rotation_quat
         };
@@ -260,9 +274,17 @@ int main(int argc, char** argv)
     readFullGtPoses();
     readFullCloudTimestamps();
 
-    std::ofstream f_keyframe_poses(output_keyframe_pose_filename_, ios::out);
-    if (!f_keyframe_poses.is_open()) {
-        std::cerr << "Failed to create keyframe pose file: " << output_keyframe_pose_filename_ << std::endl;
+    std::ofstream f_keyframe_poses_format(output_keyframe_pose_format_filename_, ios::out);
+    if (!f_keyframe_poses_format.is_open()) {
+        std::cerr << "Failed to create keyframe pose format file: " << output_keyframe_pose_format_filename_ << std::endl;
+        exit(1);
+    }
+    f_keyframe_poses_format << "cloud_idx, x, y, z, rotation_matrix(0 0), rotation_matrix(0 1), rotation_matrix(0 2), rotation_matrix(1 0), rotation_matrix(1 1), rotation_matrix(1 2), rotation_matrix(2 0), rotation_matrix(2 1), rotation_matrix(2 2), yaw, pitch, roll" << std::endl;
+    f_keyframe_poses_format.close();
+
+    std::ofstream f_keyframe_poses_data(output_keyframe_pose_data_filename_, ios::out);
+    if (!f_keyframe_poses_data.is_open()) {
+        std::cerr << "Failed to create keyframe pose data file: " << output_keyframe_pose_data_filename_ << std::endl;
         exit(1);
     }
 
@@ -309,12 +331,14 @@ int main(int argc, char** argv)
         std::cout << "Saving keyframe: " << keyframe_idx << ", dist to last keyframe: " << dist_to_last_keyframe << std::endl;
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr this_cloud = extractPointCloud(this_cloud_time);
         pcl::io::savePCDFileBinary(output_cloud_dir_ + padString(keyframe_idx) + ".pcd", *this_cloud);
-        boost::format fmt("%06d, %.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n");
-        fmt % cloud_idx % cloud_pose.x % cloud_pose.y % cloud_pose.z % cloud_pose.roll % cloud_pose.pitch % cloud_pose.yaw
+        // std::string str_entry = fmt::format();
+        boost::format fmt_entry("%06d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n");
+        fmt_entry % cloud_idx % cloud_pose.x % cloud_pose.y % cloud_pose.z % cloud_pose.roll % cloud_pose.pitch % cloud_pose.yaw
         % cloud_pose.rotation_matrix(0,0) % cloud_pose.rotation_matrix(0,1) % cloud_pose.rotation_matrix(0,2)
         % cloud_pose.rotation_matrix(1,0) % cloud_pose.rotation_matrix(1,1) % cloud_pose.rotation_matrix(1,2)
-        % cloud_pose.rotation_matrix(2,0) % cloud_pose.rotation_matrix(2,1) % cloud_pose.rotation_matrix(2,2);
-        f_keyframe_poses << fmt.str();
+        % cloud_pose.rotation_matrix(2,0) % cloud_pose.rotation_matrix(2,1) % cloud_pose.rotation_matrix(2,2)
+        % cloud_pose.yaw % cloud_pose.pitch % cloud_pose.roll;
+        f_keyframe_poses_data << fmt_entry.str();
         selected_gt_poses_.push_back(cloud_pose);
 
         keyframe_idx ++;
@@ -322,7 +346,7 @@ int main(int argc, char** argv)
 
     }
 
-    f_keyframe_poses.close();
+    f_keyframe_poses_data.close();
 
     std::cout << "Done. " << std::endl;
 

@@ -24,9 +24,11 @@ endif()
 include_directories(
     ${OpenCV_INCLUDE_DIRS}
     ${PCL_INCLUDE_DIRS}
+    include
 )
 
-add_subdirectory(BackwardCpp)
+add_subdirectory(ThirdParties/BackwardCpp)
+add_subdirectory(ThirdParties/fmt)
 
 
 # Boost Package ############################################################
@@ -72,6 +74,7 @@ target_link_libraries(batch_cloud_manip
 # mulran_point_cloud_select
 add_executable(mulran_point_cloud_select
         MulranPointCloudSelect.cpp
+        src/Utility.cpp
         )
 
 target_link_libraries(mulran_point_cloud_select
@@ -114,22 +117,35 @@ target_link_libraries(top_part_registration
 
 # batch icp align on top part of the cloud
 add_executable(batch_top_part_registration
-BatchTopPartRegistration.cpp
-${BACKWARD_ENABLE})
+        BatchTopPartRegistration.cpp
+        ${BACKWARD_ENABLE})
 
 target_link_libraries(batch_top_part_registration
-${PCL_LIBRARIES}
-${OpenCV_LIBRARIES}
-dw
-pcl_norm_2d)
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBRARIES}
+        dw
+        pcl_norm_2d)
 
 # batch icp align on top part of the cloud
 add_executable(batch_whole_registration
-BatchWholeRegistration.cpp
-${BACKWARD_ENABLE})
+        BatchWholeRegistration.cpp
+        ${BACKWARD_ENABLE})
 
 target_link_libraries(batch_whole_registration
-${PCL_LIBRARIES}
-${OpenCV_LIBRARIES}
-dw
-pcl_norm_2d)
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBRARIES}
+        dw
+        pcl_norm_2d)
+
+# batch multi-level bev generator
+add_executable(batch_multi_bev_gen
+        BatchMultiBevGen.cpp
+        src/Utility.cpp
+        ${BACKWARD_ENABLE})
+
+target_link_libraries(batch_multi_bev_gen
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBRARIES}
+        fmt
+        dw
+        pcl_norm_2d)
