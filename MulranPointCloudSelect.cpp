@@ -55,7 +55,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (
         (int16_t, label, label)
 )
 
-const float KEYFRAME_DIST_INTERVAL = 2.0f;
+const float KEYFRAME_DIST_INTERVAL = 5.0f;
 // const float KEYFRAME_DIST_INTERVAL = 10.0f;
 
 //select the dataset source here
@@ -70,42 +70,6 @@ std::string output_root_dir_ = dataset_dir_ + "selected_keyframes/";
 std::string output_cloud_dir_ = output_root_dir_ + "keyframe_point_cloud/";
 std::string output_keyframe_pose_data_filename_ = output_root_dir_ + "keyframe_pose.csv";
 std::string output_keyframe_pose_format_filename_ = output_root_dir_ + "keyframe_pose_format.csv";
-
-struct Pose6f
-{
-    float x;
-    float y;
-    float z;
-    float roll;
-    float pitch;
-    float yaw;
-    Eigen::Matrix3d rotation_matrix;
-    Eigen::Quaterniond rotation_quat;
-
-    // interpolate pose using linear for position
-    // and slerp for orientation
-    Pose6f interpolate(const Pose6f &pose_2, double ratio)
-    {
-        Pose6f new_pose;
-
-        new_pose.x = x * (1-ratio) + pose_2.x * ratio;
-        new_pose.y = y * (1-ratio) + pose_2.y * ratio;
-        new_pose.z = z * (1-ratio) + pose_2.z * ratio;
-
-        new_pose.rotation_quat = rotation_quat.slerp(ratio, pose_2.rotation_quat);
-        new_pose.rotation_matrix = new_pose.rotation_quat.toRotationMatrix();
-
-        // do NOT use the built-in conversion for euler angles in Eigen
-        // Eigen::Vector3d euler_angles = new_pose.rotation_matrix.eulerAngles(2,1,0);
-        Eigen::Vector3d euler_angles = rotationMatrixToEulerAngles(new_pose.rotation_matrix);
-
-        new_pose.yaw = euler_angles(2);
-        new_pose.pitch = euler_angles(1);
-        new_pose.roll = euler_angles(0);
-
-        return new_pose;
-    };
-};
 
 std::vector<std::pair<int64_t, Pose6f>> full_gt_poses_;
 std::vector<Pose6f> selected_gt_poses_;
@@ -279,7 +243,12 @@ int main(int argc, char** argv)
         std::cerr << "Failed to create keyframe pose format file: " << output_keyframe_pose_format_filename_ << std::endl;
         exit(1);
     }
-    f_keyframe_poses_format << "cloud_idx, x, y, z, rotation_matrix(0 0), rotation_matrix(0 1), rotation_matrix(0 2), rotation_matrix(1 0), rotation_matrix(1 1), rotation_matrix(1 2), rotation_matrix(2 0), rotation_matrix(2 1), rotation_matrix(2 2), yaw, pitch, roll" << std::endl;
+    f_keyframe_poses_format << 
+            "cloud_idx, x, y, z, roll, pitch, yaw, \
+             rotation_matrix(0 0), rotation_matrix(0 1), rotation_matrix(0 2), \
+             rotation_matrix(1 0), rotation_matrix(1 1), rotation_matrix(1 2), \
+             rotation_matrix(2 0), rotation_matrix(2 1), rotation_matrix(2 2)" 
+            << std::endl;
     f_keyframe_poses_format.close();
 
     std::ofstream f_keyframe_poses_data(output_keyframe_pose_data_filename_, ios::out);
@@ -332,12 +301,11 @@ int main(int argc, char** argv)
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr this_cloud = extractPointCloud(this_cloud_time);
         pcl::io::savePCDFileBinary(output_cloud_dir_ + padString(keyframe_idx) + ".pcd", *this_cloud);
         // std::string str_entry = fmt::format();
-        boost::format fmt_entry("%06d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n");
+        boost::format fmt_entry("%06d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n");
         fmt_entry % cloud_idx % cloud_pose.x % cloud_pose.y % cloud_pose.z % cloud_pose.roll % cloud_pose.pitch % cloud_pose.yaw
         % cloud_pose.rotation_matrix(0,0) % cloud_pose.rotation_matrix(0,1) % cloud_pose.rotation_matrix(0,2)
         % cloud_pose.rotation_matrix(1,0) % cloud_pose.rotation_matrix(1,1) % cloud_pose.rotation_matrix(1,2)
-        % cloud_pose.rotation_matrix(2,0) % cloud_pose.rotation_matrix(2,1) % cloud_pose.rotation_matrix(2,2)
-        % cloud_pose.yaw % cloud_pose.pitch % cloud_pose.roll;
+        % cloud_pose.rotation_matrix(2,0) % cloud_pose.rotation_matrix(2,1) % cloud_pose.rotation_matrix(2,2);
         f_keyframe_poses_data << fmt_entry.str();
         selected_gt_poses_.push_back(cloud_pose);
 

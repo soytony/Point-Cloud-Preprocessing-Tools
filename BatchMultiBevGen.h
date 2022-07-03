@@ -15,6 +15,7 @@
 
 #include <string>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
@@ -29,7 +30,7 @@
 #include <opencv4/opencv2/core.hpp>
 
 #include <fmt/core.h>
-
+#include "Utility.h"
 //using namespace std;
 //typedef pcl::PointXYZ PointType;
 //typedef pcl::Normal NormalType;

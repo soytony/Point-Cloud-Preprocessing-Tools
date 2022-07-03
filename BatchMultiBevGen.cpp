@@ -7,6 +7,12 @@
 
 //typedef PointXYZIRCL   PointType;
 
+#include "nanoflann.hpp"
+#include "KDTreeVectorOfVectorsAdaptor.h"
+
+using PosVecMat = std::vector<std::vector<float>>;
+using InvKeyTree = KDTreeVectorOfVectorsAdaptor<PosVecMat, float>;
+using LabelType = std::vector<float>; // use one-hot label encoding
 
 const int GROUND_HEIGHT_GRID_ROWS = 75;
 const int GROUND_HEIGHT_GRID_COLS = 50;
@@ -255,6 +261,85 @@ void computeAndSaveMultiBev(
     f_bev_bin.close();
 }
 
+std::vector<Pose6f> readKeyframePose(std::string pose_filename)
+{
+    std::fstream f_gt_pose;
+    f_gt_pose.open(pose_filename, ios::in);
+
+    if (f_gt_pose.is_open()) {
+        std::cout << "loaded keyframe pose file: " << pose_filename << std::endl;
+    } else {
+        std::cerr << "failed to load keyframe pose file: " << pose_filename << std::endl;
+        exit(1);
+    }
+
+    std::vector<Pose6f> keyframe_pose;
+
+    // NOTE: each entry should have format of:
+    /*
+    cloud_idx, x, y, z, roll, pitch, yaw, \
+    rotation_matrix(0 0), rotation_matrix(0 1), rotation_matrix(0 2), \
+    rotation_matrix(1 0), rotation_matrix(1 1), rotation_matrix(1 2), \
+    rotation_matrix(2 0), rotation_matrix(2 1), rotation_matrix(2 2)
+    */ 
+
+    std::string entry_str;
+    while (f_gt_pose >> entry_str) {
+        Eigen::Matrix<double,4,4> T = Eigen::Matrix<double,4,4>::Zero();
+        T(3,3) = 1.0;
+
+        std::vector<std::string> entry_tokens;
+
+        std::stringstream  ss(entry_str);
+        std::string str;
+        while (getline(ss, str, ',')) {
+            entry_tokens.push_back(str);
+        }
+        if(entry_tokens.size() != 16) {
+            std::cerr << "size of entry_tokens is NOT 16. " << std::endl;
+            break;
+        }
+        int64_t cloud_idx;
+        std::istringstream (entry_tokens[0]) >> cloud_idx;
+
+        // translation
+        T(0,3) = std::stod(entry_tokens[1]);
+        T(1,3) = std::stod(entry_tokens[2]);
+        T(2,3) = std::stod(entry_tokens[3]);
+
+        // rotation
+        for(int i=0; i<3; i++){
+            for(int j=0; j<3; j++){
+                T(i,j) = std::stod(entry_tokens[7+(3*i)+j]);
+            }
+        }
+
+        //Eigen::Affine3d this_pose(T);
+        Eigen::Matrix3d rotation_matrix = T.block<3,3>(0,0);
+        Eigen::Quaterniond rotation_quat(rotation_matrix);
+        // do NOT use the built-in conversion to euler angles in Eigen
+        // Eigen::Vector3d euler_angles = rotation_matrix.eulerAngles(2,1,0); // ZYX order: yaw pitch roll
+        Eigen::Vector3d euler_angles = rotationMatrixToEulerAngles(rotation_matrix);
+        Pose6f this_pose6f{
+                .x = float(T(0,3)),
+                .y = float(T(1,3)),
+                .z = float(T(2,3)),
+                .roll = float(euler_angles(0)),
+                .pitch = float(euler_angles(1)),
+                .yaw = float(euler_angles(2)),
+                .rotation_matrix = rotation_matrix,
+                .rotation_quat = rotation_quat
+        };
+
+        keyframe_pose.emplace_back(std::move(this_pose6f));
+    }
+
+    f_gt_pose.close();
+
+    std::cout << "Finish reading all keyframe pose, total " << keyframe_pose.size() << " entries. " << std::endl;
+
+    return keyframe_pose;
+}
 
 void getPcdFileNames(std::string path, std::vector<std::string>& filenames)
 {
@@ -283,6 +368,168 @@ void getPcdFileNames(std::string path, std::vector<std::string>& filenames)
     std::sort(filenames.begin(), filenames.end());
 }
 
+std::vector<int32_t> selectMajorFrames(std::vector<Pose6f>& keyframe_pose)
+{
+    static const float MAJOR_FRAME_INTERVAL = 20.0f;
+    static const size_t NUM_CANDIDATES_FROM_TREE = 1; // only check on the nearest neighbor
+
+    std::vector<int32_t> majorframe_indices;
+    std::vector<std::vector<float>> major_pose_to_search;
+
+/*
+    // convert all poses to 3d vec that kd tree could handle
+    std::for_each(keyframe_pose.begin(), keyframe_pose.end(), 
+            [&major_pose_all](Pose6f& this_pose) -> void {
+                major_pose_all.emplace_back(std::move(this_pose.getPositionVec()));
+            });
+*/
+    // 0th frame is the first major frame
+    Pose6f& last_major_pose = keyframe_pose[0];
+    majorframe_indices.push_back(0);
+    major_pose_to_search.push_back(last_major_pose.getPositionVec());
+
+    for (int frame_idx = 1; frame_idx < keyframe_pose.size(); frame_idx ++) {
+        Pose6f& last_major_pose = keyframe_pose[majorframe_indices.back()];
+        Pose6f& this_frame_pose = keyframe_pose[frame_idx];
+        
+        // Step 1: check distance to last consecutive major frame
+        float dist_to_last_major = getDistance(this_frame_pose, last_major_pose);
+        if (dist_to_last_major < MAJOR_FRAME_INTERVAL) {
+            // early skip
+            continue;
+        }
+
+        // Step 2: check distance to all previous major frames
+        std::unique_ptr<InvKeyTree> pose_tree = std::make_unique<InvKeyTree>(
+            3 /* dim */,
+            major_pose_to_search,
+            10 /* max leaf */
+        );
+
+        // knn search
+        std::vector<size_t> candidate_indexes(NUM_CANDIDATES_FROM_TREE);
+        std::vector<float> out_dists_sqr(NUM_CANDIDATES_FROM_TREE);
+
+        nanoflann::KNNResultSet<float> knnsearch_result(NUM_CANDIDATES_FROM_TREE);
+        knnsearch_result.init(&candidate_indexes[0], &out_dists_sqr[0]);
+        auto this_key_position = this_frame_pose.getPositionVec();
+        pose_tree->index->findNeighbors(
+            knnsearch_result,
+            this_key_position.data(), // ptr to query vec
+            nanoflann::SearchParams(10));
+        // 搜索到的candidate index存储在candidate_indexes中
+        if (out_dists_sqr[0] < MAJOR_FRAME_INTERVAL * MAJOR_FRAME_INTERVAL) {
+            std::string msg = fmt::format("Key Frame {} overlaps with previous Major Frame {}, i.e. Key Frame {}. \n", 
+                    frame_idx, candidate_indexes[0], majorframe_indices[candidate_indexes[0]]);
+            std::cout << msg;
+            
+            continue;
+        }
+
+        // Step 3: save this major frame
+        majorframe_indices.push_back(frame_idx);
+        major_pose_to_search.push_back(this_key_position);
+    }
+
+    return majorframe_indices;
+}
+
+
+/**
+ * @description: get smoothed labels for all keyframes, interpolated on the integer labels created for major frames. 
+ * @param key_frame_poses
+ * @param major_frame_indeices
+ * @return vector_of_smoothed_labels
+ */
+std::vector<LabelType> getKeyFrameLabel(std::vector<Pose6f>& key_frame_poses, std::vector<int32_t>& major_frame_indeices)
+{
+    static const size_t NUM_CANDIDATES_FROM_TREE = 2; // find 2 nearest major-frame neighbors
+    std::vector<LabelType> key_frame_labels(key_frame_poses.size(), LabelType(major_frame_indeices.size(), 0));
+    
+    std::string msg = fmt::format("One-hot label has length: {:d}", major_frame_indeices.size());
+    std::cout << msg << std::endl;
+    
+    // Step 1: build kd tree for nearest major frame search
+    // convert poses of all major frames to 3d vec that kd tree could handle
+    std::vector<std::vector<float>> major_pose_to_search;
+    std::for_each(
+            major_frame_indeices.begin(), major_frame_indeices.end(), 
+            [&major_pose_to_search, &key_frame_poses](int32_t major_frame_index) -> void {
+                major_pose_to_search.emplace_back(
+                        std::move(key_frame_poses[major_frame_index].getPositionVec()));
+            });
+    // create tree of all major frames
+    std::unique_ptr<InvKeyTree> pose_tree = std::make_unique<InvKeyTree>(
+        3 /* dim */,
+        major_pose_to_search,
+        10 /* max leaf */
+    );
+
+
+    // Step 2: traverse all keyframes and compute the smoothed label using its nearest major-frame neighbors
+    for (int key_frame_idx = 0; key_frame_idx < key_frame_poses.size(); key_frame_idx ++) {
+        auto& this_frame_pose = key_frame_poses[key_frame_idx];
+
+        std::vector<size_t> candidate_indexes(NUM_CANDIDATES_FROM_TREE);
+        std::vector<float> out_dists_sqr(NUM_CANDIDATES_FROM_TREE);
+
+        nanoflann::KNNResultSet<float> knnsearch_result(NUM_CANDIDATES_FROM_TREE);
+        knnsearch_result.init(&candidate_indexes[0], &out_dists_sqr[0]);
+        auto this_key_position = this_frame_pose.getPositionVec();
+        pose_tree->index->findNeighbors(
+            knnsearch_result,
+            this_key_position.data(), // ptr to query vec
+            nanoflann::SearchParams(10));
+        
+        // check nearest candidates
+        if (key_frame_idx == major_frame_indeices[candidate_indexes[0]]) {
+            // this key frame itself is a major frame
+            key_frame_labels[key_frame_idx][candidate_indexes[0]] = 1.0f;
+        
+        } else {
+            // interpolate on the nearest two major labels
+            // NOTE: this operation is heuristic
+            float weight_0 = 1.0f / (out_dists_sqr[0] + 1e-5);
+            float weight_1 = 1.0f / (out_dists_sqr[1] + 1e-5);
+            float sum_weights = weight_0 + weight_1;
+            weight_0 /= sum_weights;
+            weight_1 /= sum_weights;
+
+            key_frame_labels[key_frame_idx][candidate_indexes[0]] = weight_0;
+            key_frame_labels[key_frame_idx][candidate_indexes[1]] = weight_1;
+        }
+    }
+
+    return key_frame_labels;
+
+}
+
+
+/**
+ * @description: save labels for all key frames to a csv file
+ * @param {vector<LabelType>} key_frame_labels
+ * @param {string} label_filename
+ * @return {*}
+ */
+void saveLabels(std::vector<LabelType> key_frame_labels, std::string label_filename)
+{
+    std::ofstream f_labels(label_filename);
+    if (!f_labels.is_open()) {
+        std::cerr << "failed to open keyframe label file: " << label_filename << std::endl;
+        exit(1);
+    }
+
+    for (LabelType& label : key_frame_labels) {
+        std::ostream_iterator<float> itr(f_labels, ",");
+        std::copy(label.begin(), label.end(), itr);
+        f_labels << "\n";
+    }
+
+    std::string msg = fmt::format("saved labels from {:d} key frames. ", key_frame_labels.size());
+    std::cout << msg << std::endl;
+}
+
+
 int main(int argc, char** argv)
 {
     if (argv[1] == nullptr) {
@@ -290,11 +537,21 @@ int main(int argc, char** argv)
         exit(1);
     }
     std::string keyframes_root_dir(argv[1]);
+    // input dir
     std::string keyframes_point_cloud_dir = (keyframes_root_dir.back() == '/')?
             keyframes_root_dir + "keyframe_point_cloud/" : keyframes_root_dir + "/" + "keyframe_point_cloud/";
 
+    // output dir
     std::string non_ground_point_cloud_dir = (keyframes_root_dir.back() == '/')?
             keyframes_root_dir + "non_ground_point_cloud/" : keyframes_root_dir + "/" + "non_ground_point_cloud/";
+
+    // input file
+    std::string keyframes_pose_file = (keyframes_root_dir.back() == '/')?
+            keyframes_root_dir + "keyframe_pose.csv" : keyframes_root_dir + "/" + "keyframe_pose.csv";
+
+    // output file
+    std::string keyframes_label_file = (keyframes_root_dir.back() == '/')?
+            keyframes_root_dir + "keyframe_label.csv" : keyframes_root_dir + "/" + "keyframe_label.csv";
 
     system(("rm -rf " + non_ground_point_cloud_dir).c_str());
     system(("mkdir -p " + non_ground_point_cloud_dir).c_str());
@@ -324,7 +581,7 @@ int main(int argc, char** argv)
 
     double total_tiempo_ms = 0;
 
-    //convert all point clouds to bird-view map
+    // Step 1: convert all point clouds to bird-view map
     for (auto &input_filename : all_pcd_files) {
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr cloud_unordered(new pcl::PointCloud<pcl::PointXYZIRCT>());
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr cloud_ordered(new pcl::PointCloud<pcl::PointXYZIRCT>());
@@ -357,6 +614,14 @@ int main(int argc, char** argv)
     }
 
     std::cout << "[TIME] Average preprocessing and BEV generation: " << total_tiempo_ms / all_pcd_files.size() << "\n";
+    
+    // Step 2: select major frames
+    std::vector<Pose6f> keyframe_poses = readKeyframePose(keyframes_pose_file);
+    std::vector<int32_t> major_frame_indices = selectMajorFrames(keyframe_poses);
+    std::vector<LabelType> key_frame_labels = getKeyFrameLabel(keyframe_poses, major_frame_indices);
+    saveLabels(key_frame_labels, keyframes_label_file);
+
+
     std::cout << "Done. " << std::endl;
 
     return 0;
