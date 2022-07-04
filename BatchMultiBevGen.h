@@ -31,6 +31,9 @@
 
 #include <fmt/core.h>
 #include "Utility.h"
+
+#include "nanoflann.hpp"
+#include "KDTreeVectorOfVectorsAdaptor.h"
 //using namespace std;
 //typedef pcl::PointXYZ PointType;
 //typedef pcl::Normal NormalType;

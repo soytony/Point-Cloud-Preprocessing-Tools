@@ -1,15 +1,16 @@
-//
-// Created by tony on 22-4-17.
-//
+/*
+ * @Author: tonyfan waterwet@outlook.com
+ * @Date: 2022-04-17 10:24:39
+ * @LastEditors: clicheeeeee waterwet@outlook.com
+ * @LastEditTime: 2022-07-04 10:15:54
+ * @FilePath: /pointcloud_preprocessing/BatchMultiBevGen.cpp
+ * @Description: Given a set of key frames and their gt poses, this tool generate multi-layer BEV images and create smoothed labels for them.
+ */
 
 #include "BatchMultiBevGen.h"
 
 
-//typedef PointXYZIRCL   PointType;
-
-#include "nanoflann.hpp"
-#include "KDTreeVectorOfVectorsAdaptor.h"
-
+// using PointType = PointXYZIRCL;
 using PosVecMat = std::vector<std::vector<float>>;
 using InvKeyTree = KDTreeVectorOfVectorsAdaptor<PosVecMat, float>;
 using LabelType = std::vector<float>; // use one-hot label encoding
@@ -39,20 +40,35 @@ void setNeighbors()
     four_neighbor_iterator_.push_back(neighbor);
 }
 
-std::vector<std::string> splitString(std::string input_str, char token)
+
+/**
+ * split a string using the specified delimiter (can only be a single char).
+ * @param input_str {string} 
+ * @param delimiter {char} 
+ * @return {vector<string>} vector of splited tokens
+ */
+std::vector<std::string> splitString(std::string input_str, char delimiter)
 {
     std::stringstream ss(input_str);
     std::vector<std::string> result;
 
     std::string tmp_strlet;
 
-    while (getline(ss, tmp_strlet, token)) {
+    while (getline(ss, tmp_strlet, delimiter)) {
         result.push_back(tmp_strlet);
     }
 
     return result;
 }
 
+
+/**
+ * Organize the points within a cloud to their cylindrical projection order. 
+ * The row_idx, col_idx must be specified in the fields of the cloud before input.
+ * @param input_cloud {pcl::PointCloud<pcl::PointXYZIRCT>::Ptr}
+ * @param output_cloud {pcl::PointCloud<pcl::PointXYZIRCT>::Ptr}
+ * @return {*}
+ */
 void getOrderedCloud(
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr &input_cloud,
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr &output_cloud)
@@ -207,6 +223,13 @@ void markGroundPoints(
 
 }
 
+/**
+ * @description: compute and save the multi-layer occupancy BEV images for a single point cloud. 
+ * @param cloud {pcl::PointCloud<pcl::PointXYZIRCT>::Ptr}  
+ * @param str_cloud_idx {std::string}  
+ * @param interval=1.0f {float} 
+ * @return {*}
+ */
 void computeAndSaveMultiBev(
     pcl::PointCloud<pcl::PointXYZIRCT>::Ptr cloud, 
     std::string str_cloud_idx, 
@@ -261,6 +284,12 @@ void computeAndSaveMultiBev(
     f_bev_bin.close();
 }
 
+
+/**
+ * Read 6-DoF pose of each key frame from the csv file, and return them. 
+ * @param pose_filename {string} 
+ * @return {vector<Pose6f>} vector of poses
+ */
 std::vector<Pose6f> readKeyframePose(std::string pose_filename)
 {
     std::fstream f_gt_pose;
@@ -341,6 +370,13 @@ std::vector<Pose6f> readKeyframePose(std::string pose_filename)
     return keyframe_pose;
 }
 
+
+/**
+ * List all pcd files within the specified folder. 
+ * @param path {string}
+ * @param filenames {vector<string>}
+ * @return {*}
+ */
 void getPcdFileNames(std::string path, std::vector<std::string>& filenames)
 {
     DIR *pDir;
@@ -368,6 +404,12 @@ void getPcdFileNames(std::string path, std::vector<std::string>& filenames)
     std::sort(filenames.begin(), filenames.end());
 }
 
+
+/**
+ * Given a set of key frames, select major frames based on their consecutive distance. 
+ * @param keyframe_pose {vector<Pose6f>&}
+ * @return {vector<int32_t>} the index of each major frame in the key frames order
+ */
 std::vector<int32_t> selectMajorFrames(std::vector<Pose6f>& keyframe_pose)
 {
     static const float MAJOR_FRAME_INTERVAL = 20.0f;
@@ -436,10 +478,10 @@ std::vector<int32_t> selectMajorFrames(std::vector<Pose6f>& keyframe_pose)
 
 
 /**
- * @description: get smoothed labels for all keyframes, interpolated on the integer labels created for major frames. 
- * @param key_frame_poses
- * @param major_frame_indeices
- * @return vector_of_smoothed_labels
+ * Get smoothed labels for all keyframes, interpolated on the integer labels created for major frames. 
+ * @param key_frame_poses {std::vector<Pose6f>&}
+ * @param major_frame_indeices {std::vector<int32_t>&}
+ * @return {vector<LabelType>} vector of smoothed labels for all key frames
  */
 std::vector<LabelType> getKeyFrameLabel(std::vector<Pose6f>& key_frame_poses, std::vector<int32_t>& major_frame_indeices)
 {
@@ -506,9 +548,9 @@ std::vector<LabelType> getKeyFrameLabel(std::vector<Pose6f>& key_frame_poses, st
 
 
 /**
- * @description: save labels for all key frames to a csv file
- * @param {vector<LabelType>} key_frame_labels
- * @param {string} label_filename
+ * Save labels for all key frames to a csv file
+ * @param key_frame_labels {vector<LabelType>} 
+ * @param label_filename {string} 
  * @return {*}
  */
 void saveLabels(std::vector<LabelType> key_frame_labels, std::string label_filename)
