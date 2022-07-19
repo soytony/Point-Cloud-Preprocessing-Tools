@@ -58,10 +58,10 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (
         (float, y, y)
         (float, z, z)
         (float, intensity, intensity)
-        (uint16_t, row, row)
-        (uint16_t, col, col)
-        (uint32_t, t, t)
-        (int16_t, label, label)
+        (std::uint16_t, row, row)
+        (std::uint16_t, col, col)
+        (std::uint32_t, t, t)
+        (std::int16_t, label, label)
 )
 
 

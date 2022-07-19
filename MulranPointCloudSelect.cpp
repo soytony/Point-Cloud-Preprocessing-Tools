@@ -55,7 +55,9 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (
         (int16_t, label, label)
 )
 
-const float KEYFRAME_DIST_INTERVAL = 5.0f;
+const float KEYFRAME_DIST_INTERVAL = 1.0f;
+// const float KEYFRAME_DIST_INTERVAL = 2.0f;
+// const float KEYFRAME_DIST_INTERVAL = 5.0f;
 // const float KEYFRAME_DIST_INTERVAL = 10.0f;
 
 //select the dataset source here

@@ -2,9 +2,9 @@
  * @Author: tonyfan waterwet@outlook.com
  * @Date: 2022-04-17 10:24:39
  * @LastEditors: clicheeeeee waterwet@outlook.com
- * @LastEditTime: 2022-07-04 10:15:54
+ * @LastEditTime: 2022-07-18 15:39:03
  * @FilePath: /pointcloud_preprocessing/BatchMultiBevGen.cpp
- * @Description: Given a set of key frames and their gt poses, this tool generate multi-layer BEV images and create smoothed labels for them.
+ * @Description: Given a set of key frames and their gt poses, this tool generates multi-layer BEV images and creates smoothed labels for them.
  */
 
 #include "BatchMultiBevGen.h"
@@ -24,8 +24,9 @@ const int N_SCAN = 64;
 std::vector<std::pair<int, int>> four_neighbor_iterator_;
 
 std::string output_bvm_dir_;
-std::string output_bvm_bin_dir_;
-std::string output_bvm_img_dir_;
+std::string output_multi_bvm_bin_dir_;
+std::string output_multi_bvm_img_dir_;
+std::string output_single_bvm_img_dir_; // single bev image has only one channel, does not need bin format
 
 void setNeighbors()
 {
@@ -263,7 +264,7 @@ void computeAndSaveMultiBev(
         }
     }
 
-    std::string bev_bin_filename = fmt::format("{}{}.bin", output_bvm_bin_dir_, str_cloud_idx);
+    std::string bev_bin_filename = fmt::format("{}{}.bin", output_multi_bvm_bin_dir_, str_cloud_idx);
     std::ofstream f_bev_bin(bev_bin_filename, std::ofstream::binary);
     if (!f_bev_bin.is_open()) {
         std::cerr << "Can not open file: " << bev_bin_filename << "\n";
@@ -278,10 +279,50 @@ void computeAndSaveMultiBev(
         }
 
         std::string png_filename = 
-                fmt::format("{}{}_{:02d}.png", output_bvm_img_dir_, str_cloud_idx, layer_idx);
+                fmt::format("{}{}_{:02d}.png", output_multi_bvm_img_dir_, str_cloud_idx, layer_idx);
         cv::imwrite(png_filename, bev_img);
     }
     f_bev_bin.close();
+}
+
+
+/**
+ * @description: compute and save the single-layer height BEV images for a single point cloud. 
+ * @param cloud {pcl::PointCloud<pcl::PointXYZIRCT>::Ptr}  
+ * @param str_cloud_idx {std::string}  
+ * @param interval=1.0f {float} 
+ * @return {*}
+ */
+void computeAndSaveSingleBev(
+    pcl::PointCloud<pcl::PointXYZIRCT>::Ptr cloud, 
+    std::string str_cloud_idx, 
+    float interval = 1.0f)
+{
+    static int MAX_RANGE = 112;
+    static int MAT_SIZE = MAX_RANGE*2 / interval;
+    static float LIDAR_TO_GROUND_HEIGHT = 2.0f;
+
+    cv::Mat single_bev = cv::Mat::zeros(MAT_SIZE, MAT_SIZE, CV_8UC1);
+    
+    for (auto &pi : cloud->points) {
+        int x = round((pi.x + MAX_RANGE) / interval + 0.5);
+        int y = round((pi.y + MAX_RANGE) / interval + 0.5);
+        int height = int((pi.z + LIDAR_TO_GROUND_HEIGHT)*4.0); // usually max height does not excced 50m, scale to better visualize
+        height = std::min(std::max(0, height), 255);
+
+        // skip points out side of the range
+        if (x < 0 || x >= MAT_SIZE || y < 0 || y >= MAT_SIZE || pi.label == 0) {
+            continue;
+        }
+
+        if (single_bev.at<uint8_t>(x, y) < height) {
+            single_bev.at<uint8_t>(x, y) = height;
+        }
+    }
+
+    std::string png_filename = 
+            fmt::format("{}{}.png", output_single_bvm_img_dir_, str_cloud_idx);
+    cv::imwrite(png_filename, single_bev);
 }
 
 
@@ -595,8 +636,9 @@ int main(int argc, char** argv)
     std::string keyframes_label_file = (keyframes_root_dir.back() == '/')?
             keyframes_root_dir + "keyframe_label.csv" : keyframes_root_dir + "/" + "keyframe_label.csv";
 
-    system(("rm -rf " + non_ground_point_cloud_dir).c_str());
-    system(("mkdir -p " + non_ground_point_cloud_dir).c_str());
+    int unused __attribute__((unused));
+    unused = system(("rm -rf " + non_ground_point_cloud_dir).c_str());
+    unused = system(("mkdir -p " + non_ground_point_cloud_dir).c_str());
 
     std::vector<std::string> all_pcd_files;
     getPcdFileNames(keyframes_point_cloud_dir, all_pcd_files);
@@ -606,20 +648,26 @@ int main(int argc, char** argv)
     //create output bird-view map folder
     output_bvm_dir_ = (keyframes_root_dir.back() == '/')?
             keyframes_root_dir + "output_multi_bev/" : keyframes_root_dir + "/" + "output_multi_bev/";
-    system(("rm -rf " + output_bvm_dir_).c_str());
-    system(("mkdir -p " + output_bvm_dir_).c_str());
+    unused = system(("rm -rf " + output_bvm_dir_).c_str());
+    unused = system(("mkdir -p " + output_bvm_dir_).c_str());
 
-    //create output bird-view map binary file folder
-    output_bvm_bin_dir_ = (keyframes_root_dir.back() == '/')?
+    //create output multi-level bird-view map binary file folder
+    output_multi_bvm_bin_dir_ = (keyframes_root_dir.back() == '/')?
             keyframes_root_dir + "output_multi_bev/binary/" : keyframes_root_dir + "/" + "output_multi_bev/binary/";
-    system(("rm -rf " + output_bvm_bin_dir_).c_str());
-    system(("mkdir -p " + output_bvm_bin_dir_).c_str());
+    unused = system(("rm -rf " + output_multi_bvm_bin_dir_).c_str());
+    unused = system(("mkdir -p " + output_multi_bvm_bin_dir_).c_str());
 
-    //create output bird-view map image file folder
-    output_bvm_img_dir_ = (keyframes_root_dir.back() == '/')?
+    //create output multi-level bird-view map image file folder
+    output_multi_bvm_img_dir_ = (keyframes_root_dir.back() == '/')?
             keyframes_root_dir + "output_multi_bev/image/" : keyframes_root_dir + "/" + "output_multi_bev/image/";
-    system(("rm -rf " + output_bvm_img_dir_).c_str());
-    system(("mkdir -p " + output_bvm_img_dir_).c_str());
+    unused = system(("rm -rf " + output_multi_bvm_img_dir_).c_str());
+    unused = system(("mkdir -p " + output_multi_bvm_img_dir_).c_str());
+
+    //create output single-level bird-view map image file folder
+    output_single_bvm_img_dir_ = (keyframes_root_dir.back() == '/')?
+            keyframes_root_dir + "output_single_bev/image/" : keyframes_root_dir + "/" + "output_single_bev/image/";
+    unused = system(("rm -rf " + output_single_bvm_img_dir_).c_str());
+    unused = system(("mkdir -p " + output_single_bvm_img_dir_).c_str());
 
     double total_tiempo_ms = 0;
 
@@ -645,10 +693,11 @@ int main(int argc, char** argv)
         std::cout << "Converting file: " << short_name << "\n";
         //save bird view map, csv format
         computeAndSaveMultiBev(cloud_ordered, short_name, interval_res);
+        computeAndSaveSingleBev(cloud_ordered, short_name, interval_res);
 
         auto time_end = std::chrono::system_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start);
-        std::cout << "[TIME] Preprocessing and BEV generation: " << duration.count() * 1e-3 << "ms. \n" << endl;
+        // std::cout << "[TIME] Preprocessing and BEV generation: " << duration.count() * 1e-3 << "ms. \n";
         total_tiempo_ms += duration.count() * 1e-3;
 
         //save ground-removed point cloud
