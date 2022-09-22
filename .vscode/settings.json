@@ -67,5 +67,6 @@
         "variant": "cpp",
         "codecvt": "cpp",
         "filesystem": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": false
 }

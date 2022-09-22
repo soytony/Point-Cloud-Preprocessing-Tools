@@ -30,6 +30,7 @@
 #include <opencv4/opencv2/core.hpp>
 
 #include <fmt/core.h>
+#include <fmt/format.h>
 #include "Utility.h"
 
 #include "nanoflann.hpp"
@@ -43,25 +44,25 @@ namespace pcl {
     struct PointXYZIRCT {
         PCL_ADD_POINT4D;
         float intensity;
-        uint16_t row;
-        uint16_t col;
-        uint32_t t;
-        int16_t label;
+        std::uint16_t row;
+        std::uint16_t col;
+        std::uint32_t t;
+        std::int16_t label;
 
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     }EIGEN_ALIGN16;
 }
 
 POINT_CLOUD_REGISTER_POINT_STRUCT (
-        pcl::PointXYZIRCT,
-        (float, x, x)
-        (float, y, y)
-        (float, z, z)
-        (float, intensity, intensity)
-        (std::uint16_t, row, row)
-        (std::uint16_t, col, col)
-        (std::uint32_t, t, t)
-        (std::int16_t, label, label)
+    pcl::PointXYZIRCT,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, intensity, intensity)
+    (std::uint16_t, row, row)
+    (std::uint16_t, col, col)
+    (std::uint32_t, t, t)
+    (std::int16_t, label, label)
 )
 
 

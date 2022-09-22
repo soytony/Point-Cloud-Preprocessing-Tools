@@ -244,7 +244,7 @@ void getPcdFileNames(std::string path, std::vector<std::string>& filenames)
     DIR *pDir;
     struct dirent* ptr;
     if(!(pDir = opendir(path.c_str()))){
-        std::cerr << "Folder doesn't Exist!" << std::endl;
+        std::cerr << "Folder doesn't exist!" << std::endl;
         return;
     }
     while((ptr = readdir(pDir))!=0) {
@@ -279,8 +279,9 @@ int main(int argc, char** argv)
     std::string non_ground_point_cloud_dir = (keyframes_root_dir.back() == '/')?
             keyframes_root_dir + "non_ground_point_cloud/" : keyframes_root_dir + "/" + "non_ground_point_cloud/";
 
-    system(("rm -rf " + non_ground_point_cloud_dir).c_str());
-    system(("mkdir -p " + non_ground_point_cloud_dir).c_str());
+    int unused __attribute__((unused));
+    unused = system(("rm -rf " + non_ground_point_cloud_dir).c_str());
+    unused = system(("mkdir -p " + non_ground_point_cloud_dir).c_str());
 
     std::vector<std::string> all_pcd_files;
     getPcdFileNames(keyframes_point_cloud_dir, all_pcd_files);
@@ -290,8 +291,8 @@ int main(int argc, char** argv)
     //create output bird-view map folder
     std::string output_bvm_dir = (keyframes_root_dir.back() == '/')?
             keyframes_root_dir + "output_bvm/" : keyframes_root_dir + "/" + "output_bvm/";
-    system(("rm -rf " + output_bvm_dir).c_str());
-    system(("mkdir -p " + output_bvm_dir).c_str());
+    unused = system(("rm -rf " + output_bvm_dir).c_str());
+    unused = system(("mkdir -p " + output_bvm_dir).c_str());
 
     double total_tiempo_ms = 0;
 

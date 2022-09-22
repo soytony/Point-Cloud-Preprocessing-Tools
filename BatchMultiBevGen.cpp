@@ -1,12 +1,19 @@
 /*
+ * @Author: clicheeeeee waterwet@outlook.com
+ * @Date: 2022-06-28 10:24:39
+ * @LastEditors: clicheeeeee waterwet@outlook.com
+ * @LastEditTime: 2022-09-22 19:38:28
+ * @FilePath: /pointcloud_preprocessing/BatchMultiBevGen.cpp
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
+/*
  * @Author: tonyfan waterwet@outlook.com
  * @Date: 2022-04-17 10:24:39
  * @LastEditors: clicheeeeee waterwet@outlook.com
- * @LastEditTime: 2022-07-18 15:39:03
+ * @LastEditTime: 2022-09-18 17:24:54
  * @FilePath: /pointcloud_preprocessing/BatchMultiBevGen.cpp
  * @Description: Given a set of key frames and their gt poses, this tool generates multi-layer BEV images and creates smoothed labels for them.
  */
-
 #include "BatchMultiBevGen.h"
 
 
@@ -17,8 +24,6 @@ using LabelType = std::vector<float>; // use one-hot label encoding
 
 const int GROUND_HEIGHT_GRID_ROWS = 75;
 const int GROUND_HEIGHT_GRID_COLS = 50;
-const int Horizon_SCAN = 2083; // for hdl 64e
-const int N_SCAN = 64;
 
 
 std::vector<std::pair<int, int>> four_neighbor_iterator_;
@@ -26,7 +31,44 @@ std::vector<std::pair<int, int>> four_neighbor_iterator_;
 std::string output_bvm_dir_;
 std::string output_multi_bvm_bin_dir_;
 std::string output_multi_bvm_img_dir_;
-std::string output_single_bvm_img_dir_; // single bev image has only one channel, does not need bin format
+std::string output_single_bvm_img_dir_;
+std::string output_single_bvm_csv_dir_;
+
+SensorParams sensor_params_;
+
+void initDirectories(std::string keyframes_root_dir)
+{
+    if (keyframes_root_dir.back() != '/') {
+        keyframes_root_dir += "/";
+    }
+
+    int unused __attribute__((unused));
+
+    //create output bird-view map folder
+    output_bvm_dir_ = keyframes_root_dir + "output_multi_bev/";
+    unused = system(("rm -rf " + output_bvm_dir_).c_str());
+    unused = system(("mkdir -p " + output_bvm_dir_).c_str());
+
+    //create output multi-level bird-view map binary file folder
+    output_multi_bvm_bin_dir_ = keyframes_root_dir + "output_multi_bev/binary/";
+    unused = system(("rm -rf " + output_multi_bvm_bin_dir_).c_str());
+    unused = system(("mkdir -p " + output_multi_bvm_bin_dir_).c_str());
+
+    //create output multi-level bird-view map image file folder
+    output_multi_bvm_img_dir_ = keyframes_root_dir + "output_multi_bev/image/";
+    unused = system(("rm -rf " + output_multi_bvm_img_dir_).c_str());
+    unused = system(("mkdir -p " + output_multi_bvm_img_dir_).c_str());
+
+    //create output single-level bird-view map csv file folder
+    output_single_bvm_csv_dir_ = keyframes_root_dir + "output_single_bev/csv/";
+    unused = system(("rm -rf " + output_single_bvm_csv_dir_).c_str());
+    unused = system(("mkdir -p " + output_single_bvm_csv_dir_).c_str());
+
+    //create output single-level bird-view map image file folder
+    output_single_bvm_img_dir_ = keyframes_root_dir + "output_single_bev/image/";
+    unused = system(("rm -rf " + output_single_bvm_img_dir_).c_str());
+    unused = system(("mkdir -p " + output_single_bvm_img_dir_).c_str());
+}
 
 void setNeighbors()
 {
@@ -43,27 +85,6 @@ void setNeighbors()
 
 
 /**
- * split a string using the specified delimiter (can only be a single char).
- * @param input_str {string} 
- * @param delimiter {char} 
- * @return {vector<string>} vector of splited tokens
- */
-std::vector<std::string> splitString(std::string input_str, char delimiter)
-{
-    std::stringstream ss(input_str);
-    std::vector<std::string> result;
-
-    std::string tmp_strlet;
-
-    while (getline(ss, tmp_strlet, delimiter)) {
-        result.push_back(tmp_strlet);
-    }
-
-    return result;
-}
-
-
-/**
  * Organize the points within a cloud to their cylindrical projection order. 
  * The row_idx, col_idx must be specified in the fields of the cloud before input.
  * @param input_cloud {pcl::PointCloud<pcl::PointXYZIRCT>::Ptr}
@@ -74,7 +95,7 @@ void getOrderedCloud(
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr &input_cloud,
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr &output_cloud)
 {
-    output_cloud->resize(N_SCAN * Horizon_SCAN);
+    output_cloud->resize(sensor_params_.N_SCAN * sensor_params_.Horizon_SCAN);
 
     // int numberOfCores = 8;
     // #pragma omp parallel for num_threads(numberOfCores)
@@ -82,7 +103,7 @@ void getOrderedCloud(
         int row_idx = point.row;
         int col_idx = point.col;
 
-        int point_idx = row_idx * Horizon_SCAN + col_idx;
+        int point_idx = row_idx * sensor_params_.Horizon_SCAN + col_idx;
 
         output_cloud->points[point_idx] = point;
     }
@@ -92,7 +113,7 @@ void markGroundPoints(
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr &output_cloud,
         cv::Mat &ground_mat)
 {
-    ground_mat = cv::Mat::zeros(N_SCAN, Horizon_SCAN, CV_8S);
+    ground_mat = cv::Mat::zeros(sensor_params_.N_SCAN, sensor_params_.Horizon_SCAN, CV_8S);
 
     size_t lowerInd, upperInd;
     float diffX, diffY, diffZ, angle;
@@ -107,29 +128,28 @@ void markGroundPoints(
     cv::Mat num_ground_grid_points = 0.01 * cv::Mat::ones(
             GROUND_HEIGHT_GRID_ROWS, GROUND_HEIGHT_GRID_COLS, CV_32F);
 
-    // FIXME: should change groundScanInd for hdl-64e
-    int groundScanInd = 50;
-    for (int col_idx = 0; col_idx < Horizon_SCAN; col_idx ++) {
-        for (int row_idx = N_SCAN - 1; row_idx > N_SCAN -  groundScanInd - 1; row_idx --) {
+    // only do ground extraction within beams GROUND_UPPER_SCAN ~ N_SCAN-1
+    for (int col_idx = 0; col_idx < sensor_params_.Horizon_SCAN; col_idx ++) {
+        for (int row_idx = sensor_params_.N_SCAN - 1; row_idx > sensor_params_.N_SCAN - sensor_params_.GROUND_UPPER_SCAN - 1; row_idx --) {
 
-            lowerInd = row_idx * Horizon_SCAN + col_idx;
-            upperInd = (row_idx - 1) * Horizon_SCAN + col_idx;
+            lowerInd = row_idx * sensor_params_.Horizon_SCAN + col_idx;
+            upperInd = (row_idx - 1) * sensor_params_.Horizon_SCAN + col_idx;
 
             // 防止正上方有一个地面点没有读数，使用相邻点替代
             if (output_cloud->points[upperInd].intensity == -1) {
-                int tmp_col_idx = (col_idx + 2) % Horizon_SCAN;
-                upperInd = (row_idx - 1) * Horizon_SCAN + tmp_col_idx;
+                int tmp_col_idx = (col_idx + 2) % sensor_params_.Horizon_SCAN;
+                upperInd = (row_idx - 1) * sensor_params_.Horizon_SCAN + tmp_col_idx;
             }
 
             if (output_cloud->points[upperInd].intensity == -1) {
-                int tmp_col_idx = (col_idx - 2) % Horizon_SCAN;
-                upperInd = (row_idx - 1) * Horizon_SCAN + tmp_col_idx;
+                int tmp_col_idx = (col_idx - 2) % sensor_params_.Horizon_SCAN;
+                upperInd = (row_idx - 1) * sensor_params_.Horizon_SCAN + tmp_col_idx;
             }
 
             //use point on the other ring
             if (output_cloud->points[upperInd].intensity == -1 && row_idx >= 2) {
                 int tmp_row_idx = row_idx - 2;
-                upperInd = tmp_row_idx * Horizon_SCAN + col_idx;
+                upperInd = tmp_row_idx * sensor_params_.Horizon_SCAN + col_idx;
             }
 
             if (output_cloud->points[lowerInd].intensity == -1 ||
@@ -157,14 +177,14 @@ void markGroundPoints(
     }
 
     // 分块求地面高度平均值
-    for (int row_idx = 0; row_idx < N_SCAN; row_idx ++) {
-        for (int col_idx = 0; col_idx < Horizon_SCAN; col_idx ++) {
+    for (int row_idx = 0; row_idx < sensor_params_.N_SCAN; row_idx ++) {
+        for (int col_idx = 0; col_idx < sensor_params_.Horizon_SCAN; col_idx ++) {
             if (ground_mat.at<int8_t>(row_idx, col_idx) != 1) {
                 continue;
             }
             int sector_row = 0;
             int sector_col = 0;
-            int point_index = row_idx * Horizon_SCAN + col_idx;
+            int point_index = row_idx * sensor_params_.Horizon_SCAN + col_idx;
             std::tie(sector_row, sector_col) = getBelongingGrid(
                     output_cloud,
                     point_index);
@@ -186,13 +206,13 @@ void markGroundPoints(
     // extract ground cloud (ground_mat_ == 1)
     // mark entry that doesn't need to label (ground and invalid point) for segmentation
     // note that ground remove is from 0~N_SCAN-1, need range_mat_ for mark label matrix for the 16th scan
-    for (int row_idx = 0; row_idx < N_SCAN; row_idx ++) {
-        for (int col_idx = 0; col_idx < Horizon_SCAN; col_idx ++) {
+    for (int row_idx = 0; row_idx < sensor_params_.N_SCAN; row_idx ++) {
+        for (int col_idx = 0; col_idx < sensor_params_.Horizon_SCAN; col_idx ++) {
 
             // 防止车顶被当作地面
             int sector_row = 0;
             int sector_col = 0;
-            int point_index = row_idx * Horizon_SCAN + col_idx;
+            int point_index = row_idx * sensor_params_.Horizon_SCAN + col_idx;
             std::tie(sector_row, sector_col) = getBelongingGrid(output_cloud, point_index);
 
             int neighbor_sector_row = 0;
@@ -264,12 +284,20 @@ void computeAndSaveMultiBev(
         }
     }
 
+    // save binary file (multi-layer bev in one file)
     std::string bev_bin_filename = fmt::format("{}{}.bin", output_multi_bvm_bin_dir_, str_cloud_idx);
     std::ofstream f_bev_bin(bev_bin_filename, std::ofstream::binary);
     if (!f_bev_bin.is_open()) {
         std::cerr << "Can not open file: " << bev_bin_filename << "\n";
     }
-    for (int layer_idx = 0; layer_idx < multi_bev.size(); layer_idx ++) {
+
+    // save image files (onr single-channel image for each layer)
+    std::string img_dir = fmt::format("{}{}/", output_multi_bvm_img_dir_, str_cloud_idx);
+    if (access(img_dir.c_str(), 0) == -1) {
+        // mkdir if the img folder for this point-cloud does not exists
+        int _ __attribute__((unused)) = system(("mkdir -p " + img_dir).c_str());
+    } 
+    for (int layer_idx = 0; layer_idx < (int)multi_bev.size(); layer_idx ++) {
         auto& bev_img = multi_bev[layer_idx];
         for (int row_idx = 0; row_idx < bev_img.rows; row_idx ++) {
             f_bev_bin.write(
@@ -279,7 +307,7 @@ void computeAndSaveMultiBev(
         }
 
         std::string png_filename = 
-                fmt::format("{}{}_{:02d}.png", output_multi_bvm_img_dir_, str_cloud_idx, layer_idx);
+                fmt::format("{}{:02d}.png", img_dir, layer_idx);
         cv::imwrite(png_filename, bev_img);
     }
     f_bev_bin.close();
@@ -320,9 +348,21 @@ void computeAndSaveSingleBev(
         }
     }
 
+    // export png image
     std::string png_filename = 
             fmt::format("{}{}.png", output_single_bvm_img_dir_, str_cloud_idx);
     cv::imwrite(png_filename, single_bev);
+
+
+    // export csv format
+    std::string csv_filename = 
+            fmt::format("{}{}.csv", output_single_bvm_csv_dir_, str_cloud_idx);
+    std::ofstream f_csv(csv_filename);
+    if (!f_csv) {
+        std::cerr << "Faied to export csv formatted BEV file: " << csv_filename;
+    }
+    f_csv << cv::format(single_bev, cv::Formatter::FMT_CSV);
+    f_csv.close();
 }
 
 
@@ -366,7 +406,8 @@ std::vector<Pose6f> readKeyframePose(std::string pose_filename)
             entry_tokens.push_back(str);
         }
         if(entry_tokens.size() != 16) {
-            std::cerr << "size of entry_tokens is NOT 16. " << std::endl;
+            std::string err_msg = fmt::format("Size of entry_token is: {}, while expecting 16. ", entry_tokens.size());
+            std::cerr << err_msg << std::endl;
             break;
         }
         int64_t cloud_idx;
@@ -471,7 +512,7 @@ std::vector<int32_t> selectMajorFrames(std::vector<Pose6f>& keyframe_pose)
     majorframe_indices.push_back(0);
     major_pose_to_search.push_back(last_major_pose.getPositionVec());
 
-    for (int frame_idx = 1; frame_idx < keyframe_pose.size(); frame_idx ++) {
+    for (int frame_idx = 1; frame_idx < (int)keyframe_pose.size(); frame_idx ++) {
         Pose6f& last_major_pose = keyframe_pose[majorframe_indices.back()];
         Pose6f& this_frame_pose = keyframe_pose[frame_idx];
         
@@ -550,7 +591,7 @@ std::vector<LabelType> getKeyFrameLabel(std::vector<Pose6f>& key_frame_poses, st
 
 
     // Step 2: traverse all keyframes and compute the smoothed label using its nearest major-frame neighbors
-    for (int key_frame_idx = 0; key_frame_idx < key_frame_poses.size(); key_frame_idx ++) {
+    for (int key_frame_idx = 0; key_frame_idx < (int)key_frame_poses.size(); key_frame_idx ++) {
         auto& this_frame_pose = key_frame_poses[key_frame_idx];
 
         std::vector<size_t> candidate_indexes(NUM_CANDIDATES_FROM_TREE);
@@ -615,59 +656,63 @@ void saveLabels(std::vector<LabelType> key_frame_labels, std::string label_filen
 
 int main(int argc, char** argv)
 {
-    if (argv[1] == nullptr) {
-        std::cout << "Usage: " << argv[0] << " <keyframes_root_dir>" << std::endl;
+    if (argv[1] == nullptr || argv[2] == nullptr) {
+        std::string usage_prompt = fmt::format(
+"\
+Usage: {} [keyframes_root_dir] [sensor_type]\n\n\
+[keyframes_root_dir] should be organized as follows: \n\
+[keyframes_root_dir]\n\
+├ keyframe_point_cloud/ <- folder for selected point clouds in pcd format for each frame \n\
+├ keyframe_pose.csv <- 6-DoF pose for each frame \n\
+└ keyframe_pose_format.csv <- 6-DoF pose format description \n\
+\n\
+[sensor_type] could be HDL_32E, HDL_64E or OS1_64. \n\
+\n\
+This binary generates ground-removed point clouds, \
+single & multi layer BEV images and creates geometric distance-based labels for each point cloud. \
+After running the binary, you will have files organized as follows: \n \
+[keyframes_root_dir]\n \
+├ ... \n \
+├ non_ground_point_cloud/ <- folder for ground-removes point clouds in pcd format \n \
+├ output_multi_bev/ <- folder for multi-layer BEV images \n \
+└ output_single_bev <- folder for single-layer BEV images \n \
+", argv[0]);
+        std::cout << usage_prompt << std::endl;
         exit(1);
     }
     std::string keyframes_root_dir(argv[1]);
+    if (keyframes_root_dir.back() != '/') {
+        keyframes_root_dir.append("/");
+    }
     // input dir
-    std::string keyframes_point_cloud_dir = (keyframes_root_dir.back() == '/')?
-            keyframes_root_dir + "keyframe_point_cloud/" : keyframes_root_dir + "/" + "keyframe_point_cloud/";
-
+    std::string keyframes_point_cloud_dir = keyframes_root_dir + "keyframe_point_cloud/";
     // output dir
-    std::string non_ground_point_cloud_dir = (keyframes_root_dir.back() == '/')?
-            keyframes_root_dir + "non_ground_point_cloud/" : keyframes_root_dir + "/" + "non_ground_point_cloud/";
-
+    std::string non_ground_point_cloud_dir = keyframes_root_dir + "non_ground_point_cloud/";
     // input file
-    std::string keyframes_pose_file = (keyframes_root_dir.back() == '/')?
-            keyframes_root_dir + "keyframe_pose.csv" : keyframes_root_dir + "/" + "keyframe_pose.csv";
-
+    std::string keyframes_pose_file = keyframes_root_dir + "keyframe_pose.csv";
     // output file
-    std::string keyframes_label_file = (keyframes_root_dir.back() == '/')?
-            keyframes_root_dir + "keyframe_label.csv" : keyframes_root_dir + "/" + "keyframe_label.csv";
+    std::string keyframes_label_file = keyframes_root_dir + "keyframe_label.csv";
 
     int unused __attribute__((unused));
     unused = system(("rm -rf " + non_ground_point_cloud_dir).c_str());
     unused = system(("mkdir -p " + non_ground_point_cloud_dir).c_str());
 
+    // get pcd filenames under the specified dir
     std::vector<std::string> all_pcd_files;
     getPcdFileNames(keyframes_point_cloud_dir, all_pcd_files);
 
+    // set neighbors offset indices for bfs
     setNeighbors();
 
-    //create output bird-view map folder
-    output_bvm_dir_ = (keyframes_root_dir.back() == '/')?
-            keyframes_root_dir + "output_multi_bev/" : keyframes_root_dir + "/" + "output_multi_bev/";
-    unused = system(("rm -rf " + output_bvm_dir_).c_str());
-    unused = system(("mkdir -p " + output_bvm_dir_).c_str());
-
-    //create output multi-level bird-view map binary file folder
-    output_multi_bvm_bin_dir_ = (keyframes_root_dir.back() == '/')?
-            keyframes_root_dir + "output_multi_bev/binary/" : keyframes_root_dir + "/" + "output_multi_bev/binary/";
-    unused = system(("rm -rf " + output_multi_bvm_bin_dir_).c_str());
-    unused = system(("mkdir -p " + output_multi_bvm_bin_dir_).c_str());
-
-    //create output multi-level bird-view map image file folder
-    output_multi_bvm_img_dir_ = (keyframes_root_dir.back() == '/')?
-            keyframes_root_dir + "output_multi_bev/image/" : keyframes_root_dir + "/" + "output_multi_bev/image/";
-    unused = system(("rm -rf " + output_multi_bvm_img_dir_).c_str());
-    unused = system(("mkdir -p " + output_multi_bvm_img_dir_).c_str());
-
-    //create output single-level bird-view map image file folder
-    output_single_bvm_img_dir_ = (keyframes_root_dir.back() == '/')?
-            keyframes_root_dir + "output_single_bev/image/" : keyframes_root_dir + "/" + "output_single_bev/image/";
-    unused = system(("rm -rf " + output_single_bvm_img_dir_).c_str());
-    unused = system(("mkdir -p " + output_single_bvm_img_dir_).c_str());
+    // init globally used directories
+    initDirectories(keyframes_root_dir);
+    
+    // parse and set sensor params
+    SensorType sensor_type = parseSensorType(std::string(argv[2]));
+    sensor_params_ = getSensorParams(sensor_type);
+    std::string sensor_msg = fmt::format("Using sensor_type {}, with params: {}\n", 
+            std::string(argv[2]), printSensorParams(sensor_params_));
+    std::cout << sensor_msg;
 
     double total_tiempo_ms = 0;
 
@@ -676,7 +721,6 @@ int main(int argc, char** argv)
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr cloud_unordered(new pcl::PointCloud<pcl::PointXYZIRCT>());
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr cloud_ordered(new pcl::PointCloud<pcl::PointXYZIRCT>());
         pcl::io::loadPCDFile(input_filename, *cloud_unordered);
-
 
         auto time_start = std::chrono::system_clock::now();
 
@@ -701,7 +745,8 @@ int main(int argc, char** argv)
         total_tiempo_ms += duration.count() * 1e-3;
 
         //save ground-removed point cloud
-        pcl::io::savePCDFileBinary(non_ground_point_cloud_dir + short_name + ".pcd", *cloud_ordered);
+        std::string pcd_filename = non_ground_point_cloud_dir + short_name + ".pcd";
+        pcl::io::savePCDFileBinary(pcd_filename, *cloud_ordered);
     }
 
     std::cout << "[TIME] Average preprocessing and BEV generation: " << total_tiempo_ms / all_pcd_files.size() << "\n";

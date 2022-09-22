@@ -33,14 +33,15 @@ struct PointXYZIRCL
     int32_t  label_id;
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 } EIGEN_ALIGN16;
-POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRCL,
-                                   (float, x, x)
-                                           (float, y, y)
-                                           (float, z, z)
-                                           (float, intensity, intensity)
-                                           (uint16_t, ring_row, ring_row)
-                                           (uint16_t, ring_col, ring_col)
-                                           (int32_t,  label_id, label_id)
+POINT_CLOUD_REGISTER_POINT_STRUCT (
+	PointXYZIRCL,
+	(float, x, x)
+	(float, y, y)
+	(float, z, z)
+	(float, intensity, intensity)
+	(uint16_t, ring_row, ring_row)
+	(uint16_t, ring_col, ring_col)
+	(int32_t,  label_id, label_id)
 )
 
 // typedef pcl::PointXYZI PointType;
@@ -56,7 +57,7 @@ int main(int argc,char **argv)
 	std::string fileName(argv[1]);
 	pcl::io::loadPCDFile(fileName, *cloud_input);
 
-    for (int i = 0; i < cloud_input->size(); i ++) {
+    for (int i = 0; i < (int)cloud_input->size(); i ++) {
         PointType po;
         PointType &pi = cloud_input->points[i];
 

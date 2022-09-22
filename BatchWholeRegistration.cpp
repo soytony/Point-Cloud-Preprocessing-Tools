@@ -48,25 +48,25 @@ namespace pcl {
     struct PointXYZIRCT {
         PCL_ADD_POINT4D;
         float intensity;
-        uint16_t row;
-        uint16_t col;
-        uint32_t t;
-        int16_t label;
+        std::uint16_t row;
+        std::uint16_t col;
+        std::uint32_t t;
+        std::int16_t label;
 
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     }EIGEN_ALIGN16;
 }
 
 POINT_CLOUD_REGISTER_POINT_STRUCT (
-        pcl::PointXYZIRCT,
-        (float, x, x)
-                (float, y, y)
-                (float, z, z)
-                (float, intensity, intensity)
-                (uint16_t, row, row)
-                (uint16_t, col, col)
-                (uint32_t, t, t)
-                (int16_t, label, label)
+    pcl::PointXYZIRCT,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, intensity, intensity)
+    (std::uint16_t, row, row)
+    (std::uint16_t, col, col)
+    (std::uint32_t, t, t)
+    (std::int16_t, label, label)
 )
 
 
@@ -102,7 +102,7 @@ void extractTopAndFlatten(
 
     std::vector<std::vector<std::vector<int>>> grid_map_indices(NUM_GRID_X, std::vector<std::vector<int>>(NUM_GRID_Y));
 
-    for (int point_idx = 0; point_idx < cloud_input->points.size(); point_idx ++) {
+    for (int point_idx = 0; point_idx < (int)cloud_input->points.size(); point_idx ++) {
         pcl::PointXYZIRCT &point = cloud_input->points[point_idx];
 
         //skip ground points
@@ -339,7 +339,7 @@ int main(int argc, char** argv)
     int count_failure = 0;
     int count_success = 0;
 
-    for (int idx = 0; idx < matches.size(); idx ++) {
+    for (int idx = 0; idx < (int)matches.size(); idx ++) {
         std::cout << COLOR_GREEN << "Processing match: " << matches[idx].query_idx << " and " << matches[idx].match_idx << COLOR_RESET << std::endl;
 
         std::string cloud_filename_1 = (point_cloud_dir.back() == '/')? 

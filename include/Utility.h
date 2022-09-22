@@ -5,10 +5,26 @@
 #include <Eigen/Geometry>
 #include <iostream>
 #include <vector>
+#include <fmt/core.h>
+#include <fmt/format.h>
 
 bool isRotationMatirx(Eigen::Matrix3d R);
 Eigen::Vector3d rotationMatrixToEulerAngles(Eigen::Matrix3d &R);
 
+enum SensorType
+{
+    HDL_32E = 0,
+    HDL_64E,
+    OS1_64,
+    UNKNOWN
+};
+
+struct SensorParams
+{
+    int Horizon_SCAN;
+    int N_SCAN;
+    int GROUND_UPPER_SCAN;
+};
 
 struct Pose6f
 {
@@ -53,5 +69,9 @@ struct Pose6f
 
 
 float getDistance(Pose6f frame_1, Pose6f frame_2);
+std::vector<std::string> splitString(std::string input_str, char delimiter);
+SensorType parseSensorType(std::string sensor_str);
+SensorParams getSensorParams(SensorType sensor_type);
+std::string printSensorParams(SensorParams params);
 
 #endif

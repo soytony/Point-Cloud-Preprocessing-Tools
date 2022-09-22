@@ -80,6 +80,7 @@ add_executable(mulran_point_cloud_select
 target_link_libraries(mulran_point_cloud_select
         ${PCL_LIBRARIES}
         ${OpenCV_LIBRARIES}
+        fmt
         )
 
 
@@ -91,6 +92,7 @@ add_executable(kitti_point_cloud_select
 target_link_libraries(kitti_point_cloud_select
         ${PCL_LIBRARIES}
         ${OpenCV_LIBRARIES}
+        fmt
         )
 
 # oxford radar robotcar point cloud select
@@ -101,6 +103,7 @@ add_executable(oxford_point_cloud_select
 target_link_libraries(oxford_point_cloud_select
         ${PCL_LIBRARIES}
         ${OpenCV_LIBRARIES}
+        fmt
         )
 
 # test for icp align on top part of the cloud

@@ -26,33 +26,35 @@
 
 #include <opencv4/opencv2/opencv.hpp>
 #include <opencv4/opencv2/core.hpp>
+#include <fmt/core.h>
+#include <fmt/format.h>
 
 namespace pcl {
     struct PointXYZIRCT {
         PCL_ADD_POINT4D;
         float intensity;
-        uint16_t row;
-        uint16_t col;
-        uint32_t t;
-        int16_t label;
+        std::uint16_t row;
+        std::uint16_t col;
+        std::uint32_t t;
+        std::int16_t label;
 
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     }EIGEN_ALIGN16;
 }
 
 POINT_CLOUD_REGISTER_POINT_STRUCT (
-        pcl::PointXYZIRCT,
-        (float, x, x)
-                (float, y, y)
-                (float, z, z)
-                (float, intensity, intensity)
-                (uint16_t, row, row)
-                (uint16_t, col, col)
-                (uint32_t, t, t)
-                (int16_t, label, label)
+    pcl::PointXYZIRCT,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, intensity, intensity)
+    (std::uint16_t, row, row)
+    (std::uint16_t, col, col)
+    (std::uint32_t, t, t)
+    (std::int16_t, label, label)
 )
 
-const float KEYFRAME_DIST_INTERVAL = 2.0f;
+float KEYFRAME_DIST_INTERVAL = 2.0f;
 
 //select the dataset source here
 std::string dataset_dir_ = "/media/tony/mas_linux/Datasets/oxford/2019-01-11-13-24-51-radar-oxford-10k/";
@@ -63,7 +65,8 @@ std::string gt_pose_filename_ = dataset_dir_ + "/gps/ins.csv";
 
 std::string output_root_dir_ = dataset_dir_ + "selected_keyframes/";
 std::string output_cloud_dir_ = output_root_dir_ + "keyframe_point_cloud/";
-std::string output_keyframe_pose_filename_ = output_root_dir_ + "keyframe_pose.csv";
+std::string output_keyframe_pose_data_filename_ = output_root_dir_ + "keyframe_pose.csv";
+std::string output_keyframe_pose_format_filename_;
 
 struct Pose6f
 {
@@ -96,6 +99,31 @@ struct Pose6f
         return new_pose;
     };
 };
+
+void initDirectories(std::string root_dir)
+{
+    if (root_dir.back() != '/') {
+        root_dir = root_dir + "/";
+    }
+    dataset_dir_ = root_dir;
+
+    velodyne_cloud_dir_ = dataset_dir_ + "velodyne_left/";
+    ouster_time_filename_ = dataset_dir_ + "velodyne_left.timestamps";
+    gt_pose_filename_ = dataset_dir_ + "/gps/ins.csv";
+
+    output_root_dir_ = fmt::format("{}selected_keyframes_{:2.2f}m/", dataset_dir_, KEYFRAME_DIST_INTERVAL);
+    output_cloud_dir_ = output_root_dir_ + "keyframe_point_cloud/";
+    output_keyframe_pose_data_filename_ = output_root_dir_ + "keyframe_pose.csv";
+    output_keyframe_pose_format_filename_ = output_root_dir_ + "keyframe_pose_format.csv";
+
+
+    int unused __attribute__((unused));
+    unused = system((std::string("exec rm -r ") + output_root_dir_).c_str());
+    unused = system((std::string("mkdir -p ") + output_root_dir_).c_str());
+
+    unused = system((std::string("exec rm -r ") + output_cloud_dir_).c_str());
+    unused = system((std::string("mkdir -p ") + output_cloud_dir_).c_str());
+}
 
 std::vector<std::pair<int64_t, Pose6f>> full_gt_poses_;
 std::vector<Pose6f> selected_gt_poses_;
@@ -175,6 +203,8 @@ pcl::PointCloud<pcl::PointXYZIRCT>::Ptr extractPointCloud(int64_t timestamp)
         point.x = -point.x;
         point.z = -point.z;
 
+        point.label = -2;
+
         float elevation_angle = atan2(point.z, sqrt(point.x * point.x + point.y * point.y)) / M_PI * 180.0f;
         int row_idx = round((-elevation_angle + 10.67) / 1.3335); //top-down [0,31]
         row_idx = std::min(31, std::max(0, row_idx));
@@ -183,9 +213,9 @@ pcl::PointCloud<pcl::PointXYZIRCT>::Ptr extractPointCloud(int64_t timestamp)
         float azimuthal_angle = atan2(point.y, point.x) / M_PI * 180.0f;
         if (azimuthal_angle > 360.0f) {azimuthal_angle = azimuthal_angle - 360.0f;}
         else if (azimuthal_angle < 0.0f) {azimuthal_angle = azimuthal_angle + 360.0f;}
-        point.col = static_cast<uint16_t>(round(azimuthal_angle / 360.0f * 1084));
-        if (point.col >= 1084) {point.col -= 1084;}
-        if (point.col < 0) {point.col += 1084;}
+        point.col = static_cast<uint16_t>(round(azimuthal_angle / 360.0f * 1056));
+        if (point.col >= 1056) {point.col -= 1056;}
+        if (point.col < 0) {point.col += 1056;}
     }
 
     file.close();
@@ -300,22 +330,67 @@ std::string padString(int keyframe_idx)
 
 int main(int argc, char** argv)
 {
-    int unused;
-    unused = system((std::string("exec rm -r ") + output_root_dir_).c_str());
-    unused = system((std::string("mkdir -p ") + output_root_dir_).c_str());
+    // Step 1: Read input arguments and do global var initialization
+    if (argv[1] == nullptr) {
+    std::string usage_prompt = fmt::format(
+"\
+Usage: {} <dataset_root_dir> keyframe_dist_interval(default=2)\n\n \
+<dataset_root_dir> should be organized as follows: \n \
+<dataset_root_dir>\n \
+├ velodyne_left/ \n \
+├ velodyne_left.timestamps \n \
+└ gps/ \n \
+  └ ins.csv \n \
+\n\n \
+This binary selects keyframes based on the interval distance between two consecutive frames. \
+You may specify the interval mannualy, e.g. 1 or 2, in meters. \
+After running the binary, you will have files organized as follows: \n \
+<keyframes_root_dir>\n \
+├ ... \n \
+└ selected_keyframes_xxm/ \n \
+  ├ keyframe_point_cloud/ <- folder for keyframe point clouds in pcd format \n \
+  ├ keyframe_pose.csv <- gt poses for all selected keyframes \n \
+  └ keyframe_pose_format.csv <- format for one entry in the gt poses \n \
+", argv[0]);
+        std::cout << usage_prompt << std::endl;
+        exit(1);
+    }
+    
+    if (argv[2] != nullptr) {
+        KEYFRAME_DIST_INTERVAL = std::stof(std::string(argv[2]));
+    }
+    std::cout << "Using keyframe_dist_interval = " << KEYFRAME_DIST_INTERVAL << "m. \n";
+    initDirectories(std::string(argv[1]));
+    std::cout << "Using dataset_dir = " << dataset_dir_ << " \n";
 
-    unused = system((std::string("exec rm -r ") + output_cloud_dir_).c_str());
-    unused = system((std::string("mkdir -p ") + output_cloud_dir_).c_str());
 
+    // Step 2: Read KITTI GT poses and timestamps
     readFullGtPoses();
     readFullCloudTimestamps();
 
-    std::ofstream f_keyframe_poses(output_keyframe_pose_filename_, ios::out);
+    std::ofstream f_keyframe_poses(output_keyframe_pose_data_filename_, ios::out);
     if (!f_keyframe_poses.is_open()) {
-        std::cerr << "Failed to create keyframe pose file: " << output_keyframe_pose_filename_ << std::endl;
+        std::cerr << "Failed to create keyframe pose file: " << output_keyframe_pose_data_filename_ << std::endl;
         exit(1);
     }
 
+
+    // Step 3: Save output pose format descriptions
+    std::ofstream f_keyframe_poses_format(output_keyframe_pose_format_filename_, ios::out);
+    if (!f_keyframe_poses_format.is_open()) {
+        std::cerr << "Failed to create keyframe pose format file: " << output_keyframe_pose_format_filename_ << std::endl;
+        exit(1);
+    }
+    f_keyframe_poses_format << 
+            "cloud_idx, x, y, z, roll, pitch, yaw, \
+             rotation_matrix(0 0), rotation_matrix(0 1), rotation_matrix(0 2), \
+             rotation_matrix(1 0), rotation_matrix(1 1), rotation_matrix(1 2), \
+             rotation_matrix(2 0), rotation_matrix(2 1), rotation_matrix(2 2)" 
+            << std::endl;
+    f_keyframe_poses_format.close();
+
+
+    // Step 4: Select keyframes and save their interpolated gt poses
     int keyframe_idx = 0;
 
     Pose6f last_cloud_pose{.x = 0, .y = 0, .z = 0, .roll = 0, .pitch = 0, .yaw = 0};
@@ -343,7 +418,6 @@ int main(int argc, char** argv)
             continue;
         }
 
-
         double lamda = double(this_cloud_time - last_pose_time) / double(this_pose_time - last_pose_time);
         //Pose6f cloud_pose = begin_pose * (1 - lamda) + end_pose * lamda;
         //when lamda equals 1.0, cloud_pose is equal to the end_pose
@@ -359,12 +433,13 @@ int main(int argc, char** argv)
         std::cout << "Saving keyframe: " << keyframe_idx << ", dist to last keyframe: " << dist_to_last_keyframe << std::endl;
         pcl::PointCloud<pcl::PointXYZIRCT>::Ptr this_cloud = extractPointCloud(this_cloud_time);
         pcl::io::savePCDFileBinary(output_cloud_dir_ + padString(keyframe_idx) + ".pcd", *this_cloud);
-        boost::format fmt("%06d, %.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n");
-        fmt % cloud_idx % cloud_pose.x % cloud_pose.y % cloud_pose.z % cloud_pose.roll % cloud_pose.pitch % cloud_pose.yaw
-        % cloud_pose.rotation_matrix(0,0) % cloud_pose.rotation_matrix(0,1) % cloud_pose.rotation_matrix(0,2)
-        % cloud_pose.rotation_matrix(1,0) % cloud_pose.rotation_matrix(1,1) % cloud_pose.rotation_matrix(1,2)
-        % cloud_pose.rotation_matrix(2,0) % cloud_pose.rotation_matrix(2,1) % cloud_pose.rotation_matrix(2,2);
-        f_keyframe_poses << fmt.str();
+        std::string pose_entry = 
+        fmt::format("{:06d},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f},{:.6f}\n",
+            cloud_idx, cloud_pose.x, cloud_pose.y, cloud_pose.z, cloud_pose.roll, cloud_pose.pitch, cloud_pose.yaw, 
+            cloud_pose.rotation_matrix(0,0), cloud_pose.rotation_matrix(0,1), cloud_pose.rotation_matrix(0,2), 
+            cloud_pose.rotation_matrix(1,0), cloud_pose.rotation_matrix(1,1), cloud_pose.rotation_matrix(1,2), 
+            cloud_pose.rotation_matrix(2,0), cloud_pose.rotation_matrix(2,1), cloud_pose.rotation_matrix(2,2));
+        f_keyframe_poses << pose_entry;
         selected_gt_poses_.push_back(cloud_pose);
 
         keyframe_idx ++;

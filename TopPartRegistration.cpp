@@ -44,25 +44,25 @@ namespace pcl {
     struct PointXYZIRCT {
         PCL_ADD_POINT4D;
         float intensity;
-        uint16_t row;
-        uint16_t col;
-        uint32_t t;
-        int16_t label;
+        std::uint16_t row;
+        std::uint16_t col;
+        std::uint32_t t;
+        std::int16_t label;
 
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     }EIGEN_ALIGN16;
 }
 
 POINT_CLOUD_REGISTER_POINT_STRUCT (
-        pcl::PointXYZIRCT,
-        (float, x, x)
-                (float, y, y)
-                (float, z, z)
-                (float, intensity, intensity)
-                (uint16_t, row, row)
-                (uint16_t, col, col)
-                (uint32_t, t, t)
-                (int16_t, label, label)
+    pcl::PointXYZIRCT,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, intensity, intensity)
+    (std::uint16_t, row, row)
+    (std::uint16_t, col, col)
+    (std::uint32_t, t, t)
+    (std::int16_t, label, label)
 )
 
 
@@ -91,7 +91,7 @@ void extractTopAndFlatten(
 
     std::vector<std::vector<std::vector<int>>> grid_map_indices(NUM_GRID_X, std::vector<std::vector<int>>(NUM_GRID_Y));
 
-    for (int point_idx = 0; point_idx < cloud_input->points.size(); point_idx ++) {
+    for (int point_idx = 0; point_idx < (int)cloud_input->points.size(); point_idx ++) {
         pcl::PointXYZIRCT &point = cloud_input->points[point_idx];
 
         //skip ground points
@@ -162,7 +162,7 @@ void addNormal(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
 
     cloud_with_normals->reserve(tmp_cloud_with_normals->size());
 
-    for (int i = 0; i < tmp_cloud_with_normals->size(); i ++) {
+    for (int i = 0; i < (int)tmp_cloud_with_normals->size(); i ++) {
         auto point = tmp_cloud_with_normals->points[i];
 
         // if (std::isnan(point.normal_x) || std::isnan(point.normal_y) || std::isnan(point.normal_z) ||
@@ -246,7 +246,7 @@ void separatePointsAndNormals(
     points->resize(pointnormals->size());
     normals->resize(pointnormals->size());
 
-    for (int i = 0; i < pointnormals->size(); i++) {
+    for (int i = 0; i < (int)pointnormals->size(); i++) {
         points->points[i].getArray3fMap() = pointnormals->points[i].getArray3fMap();
         normals->points[i].getNormalVector3fMap() = pointnormals->points[i].getNormalVector3fMap();
     }

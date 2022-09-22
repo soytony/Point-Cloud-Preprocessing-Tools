@@ -1,3 +1,11 @@
+/*
+ * @Author: clicheeeeee waterwet@outlook.com
+ * @Date: 2022-04-17 16:38:04
+ * @LastEditors: clicheeeeee waterwet@outlook.com
+ * @LastEditTime: 2022-09-22 20:00:10
+ * @FilePath: /pointcloud_preprocessing/BatchCloudManip.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 //
 // Created by tony on 22-4-17.
 //
@@ -37,25 +45,25 @@ namespace pcl {
     struct PointXYZIRCT {
         PCL_ADD_POINT4D;
         float intensity;
-        uint16_t row;
-        uint16_t col;
-        uint32_t t;
-        int16_t label;
+        std::uint16_t row;
+        std::uint16_t col;
+        std::uint32_t t;
+        std::int16_t label;
 
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     }EIGEN_ALIGN16;
 }
 
 POINT_CLOUD_REGISTER_POINT_STRUCT (
-        pcl::PointXYZIRCT,
-        (float, x, x)
-        (float, y, y)
-        (float, z, z)
-        (float, intensity, intensity)
-        (uint16_t, row, row)
-        (uint16_t, col, col)
-        (uint32_t, t, t)
-        (int16_t, label, label)
+    pcl::PointXYZIRCT,
+    (float, x, x)
+    (float, y, y)
+    (float, z, z)
+    (float, intensity, intensity)
+    (std::uint16_t, row, row)
+    (std::uint16_t, col, col)
+    (std::uint32_t, t, t)
+    (std::int16_t, label, label)
 )
 
 
