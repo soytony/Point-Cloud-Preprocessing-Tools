@@ -2,7 +2,7 @@
  * @Author: clicheeeeee waterwet@outlook.com
  * @Date: 2022-06-28 10:24:39
  * @LastEditors: clicheeeeee waterwet@outlook.com
- * @LastEditTime: 2022-09-22 19:38:28
+ * @LastEditTime: 2022-10-22 18:12:51
  * @FilePath: /pointcloud_preprocessing/BatchMultiBevGen.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -15,7 +15,7 @@
  * @Description: Given a set of key frames and their gt poses, this tool generates multi-layer BEV images and creates smoothed labels for them.
  */
 #include "BatchMultiBevGen.h"
-
+#define BACKWARD_HAS_DW 1
 
 // using PointType = PointXYZIRCL;
 using PosVecMat = std::vector<std::vector<float>>;
@@ -102,6 +102,13 @@ void getOrderedCloud(
     for (auto &point : input_cloud->points) {
         int row_idx = point.row;
         int col_idx = point.col;
+
+        if (row_idx < 0 || row_idx >= sensor_params_.N_SCAN) {
+            continue;
+        }
+        if (col_idx < 0 || col_idx >= sensor_params_.Horizon_SCAN) {
+            continue;
+        }
 
         int point_idx = row_idx * sensor_params_.Horizon_SCAN + col_idx;
 
