@@ -1,0 +1,6 @@
+[submodule "ThirdParties/BackwardCpp"]
+	path = ThirdParties/BackwardCpp
+	url = https://github.com/bombela/backward-cpp.git
+[submodule "ThirdParties/fmt"]
+	path = ThirdParties/fmt
+	url = https://github.com/fmtlib/fmt.git
