@@ -204,7 +204,7 @@ pcl::PointCloud<pcl::PointXYZIRCT>::Ptr extractPointCloud(int64_t timestamp)
 
     //structed points vector with fixed size of points
     pcl::PointCloud<pcl::PointXYZIRCT>::Ptr structured_cloud(new pcl::PointCloud<pcl::PointXYZIRCT>);
-    structured_cloud->points.resize(N_SCAN * Horizon_SCAN, pcl::PointXYZIRCT{.intensity = -1});
+    structured_cloud->points.resize(N_SCAN * Horizon_SCAN);
 
     //fill row idx and col idx for each point
     int num_points_on_this_ring = 0;
@@ -235,6 +235,7 @@ pcl::PointCloud<pcl::PointXYZIRCT>::Ptr extractPointCloud(int64_t timestamp)
             cloud->points[i].row = static_cast<uint16_t>(ring_idx);
             cloud->points[i].col = static_cast<uint16_t>(col_idx);
             cloud->points[i].label = static_cast<int16_t>(-2); //-2 means not segmented points
+            cloud->points[i].intensity = -1;
 
             structured_cloud->points[ring_idx * Horizon_SCAN + col_idx] = cloud->points[i];
         }
