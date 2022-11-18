@@ -2,7 +2,7 @@
  * @Author: clicheeeeee waterwet@outlook.com
  * @Date: 2022-06-29 16:05:35
  * @LastEditors: clicheeeeee waterwet@outlook.com
- * @LastEditTime: 2022-09-22 14:19:55
+ * @LastEditTime: 2022-11-18 18:13:13
  * @FilePath: /pointcloud_preprocessing/src/Utility.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -98,18 +98,22 @@ SensorParams getSensorParams(SensorType sensor_type)
             params.N_SCAN = 32;
             params.Horizon_SCAN = 1056;
             params.GROUND_UPPER_SCAN = 20;
+            params.HEIGHT_RES = 0.5f;
             break;
         
         case SensorType::HDL_64E:
             params.N_SCAN = 64;
             params.Horizon_SCAN = 2083;
             params.GROUND_UPPER_SCAN = 50;
+            // TODO: need to tune this param later
+            params.HEIGHT_RES = 0.25f;
             break;
         
         case SensorType::OS1_64:
             params.N_SCAN = 64;
             params.Horizon_SCAN = 1024;
             params.GROUND_UPPER_SCAN = 31;
+            params.HEIGHT_RES = 1.0f;
             break;
 
         default:

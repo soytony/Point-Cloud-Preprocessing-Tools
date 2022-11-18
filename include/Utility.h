@@ -1,3 +1,11 @@
+/*
+ * @Author: clicheeeeee waterwet@outlook.com
+ * @Date: 2022-06-29 16:05:29
+ * @LastEditors: clicheeeeee waterwet@outlook.com
+ * @LastEditTime: 2022-11-18 18:11:15
+ * @FilePath: /pointcloud_preprocessing/include/Utility.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 #ifndef __UTILITY_HEADER__
 #define __UTILITY_HEADER__
 
@@ -24,6 +32,7 @@ struct SensorParams
     int Horizon_SCAN;
     int N_SCAN;
     int GROUND_UPPER_SCAN;
+    float HEIGHT_RES; //高度方向的分辨率
 };
 
 struct Pose6f

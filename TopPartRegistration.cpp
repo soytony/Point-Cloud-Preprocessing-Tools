@@ -359,14 +359,28 @@ int main(int argc, char** argv)
               ", trans: \n" << result_fine.final_transformation << ". \n";
     // 3d icp end
 
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr flat_pc_1_pnts(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::Normal>::Ptr flat_pc_1_nmls(new pcl::PointCloud<pcl::Normal>);
     separatePointsAndNormals(points_with_normals_src, flat_pc_1_pnts, flat_pc_1_nmls);
 
     boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer")); //创建视窗对象，定义标题栏名称“3D Viewer”
-	viewer->addPointCloud<pcl::PointXYZ>(flat_pc_1_pnts, "original_cloud");	//将点云添加到视窗对象中，并定义一个唯一的ID“original_cloud”
-	viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1, 0, 0.5, "original_cloud"); //点云附色，三个字段，每个字段范围0-1
-	viewer->addPointCloudNormals<pcl::PointXYZ, pcl::PointNormal>(flat_pc_1_pnts, points_with_normals_src, 5, 1, "normals");	//每十个点显示一个法线，长度为0.05
+    viewer->setBackgroundColor(0.0, 0.0, 0.0);
+    //将点云添加到视窗对象中，并定义一个唯一的ID“original_cloud”
+	viewer->addPointCloud<pcl::PointXYZ>(flat_pc_1_pnts, "original_cloud");
+	//点云附色，三个字段，每个字段范围0-1
+    viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0, "original_cloud");
+    viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "original_cloud");
+    //每十个点显示一个法线，长度为0.05
+	viewer->addPointCloudNormals<pcl::PointXYZ, pcl::PointNormal>(flat_pc_1_pnts, points_with_normals_src, 10, 2, "normals");
+
+    // boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer")); //创建视窗对象，定义标题栏名称“3D Viewer”
+    // viewer->setBackgroundColor(0.0, 0.0, 0.0);
+    // //将点云添加到视窗对象中，并定义一个唯一的ID“original_cloud”
+	// viewer->addPointCloud<pcl::PointXYZIRCT>(input_cloud_1, "original_cloud_full");
+	// //点云附色，三个字段，每个字段范围0-1
+    // viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0, "original_cloud_full");
+    // viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "original_cloud_full");
 
 	while (!viewer->wasStopped())
 	{

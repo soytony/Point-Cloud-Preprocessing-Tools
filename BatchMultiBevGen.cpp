@@ -2,7 +2,7 @@
  * @Author: clicheeeeee waterwet@outlook.com
  * @Date: 2022-06-28 10:24:39
  * @LastEditors: clicheeeeee waterwet@outlook.com
- * @LastEditTime: 2022-10-22 18:12:51
+ * @LastEditTime: 2022-11-18 18:14:40
  * @FilePath: /pointcloud_preprocessing/BatchMultiBevGen.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -278,7 +278,7 @@ void computeAndSaveMultiBev(
     for (auto &pi : cloud->points) {
         int x = round((pi.x + MAX_RANGE) / interval + 0.5);
         int y = round((pi.y + MAX_RANGE) / interval + 0.5);
-        int layer_idx = round(pi.z + LIDAR_TO_GROUND_HEIGHT);
+        int layer_idx = round(pi.z / sensor_params_.HEIGHT_RES + LIDAR_TO_GROUND_HEIGHT);
 
         // skip points out side of the range
         if (x < 0 || x >= MAT_SIZE || y < 0 || y >= MAT_SIZE || layer_idx < 0 || layer_idx >= NUM_BEV_LAYERS
